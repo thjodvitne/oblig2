@@ -3,7 +3,7 @@
 # Første PR-en din endrer kortnavnet. Det står i navnet på alle ressursene dine,
 # og tenanten er delt, så bruk det samme kortnavnet som i oblig 1.
 
-kortnavn = "ENDRE-MEG"
+kortnavn = "jml"
 
 # App Service (web app) virker bare i West Europe i abonnementet dere bruker.
 # Ikke bytt region.

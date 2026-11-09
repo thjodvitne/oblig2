@@ -1,0 +1,1 @@
+tjenester = ["ordre", "meny"]

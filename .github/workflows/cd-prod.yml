@@ -1,0 +1,91 @@
+# =============================================================================
+#  .github/workflows/cd-prod.yml  –  promotering til prod
+# -----------------------------------------------------------------------------
+#  Startes for hånd med SHA-en fra en vellykket utrulling til dev. prod-
+#  environmentet har en godkjenningsport (Required reviewers), så jobben venter
+#  til noen har sagt ja.
+#
+#  Hva godkjenner du? At commiten som ble rullet ut i dev, skal ut i prod. Les
+#  prod-planen på PR-en før du trykker.
+# =============================================================================
+
+name: CD prod
+
+run-name: prod ← ${{ inputs.sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Hele commit-SHA-en som allerede er rullet ut i dev
+        type: string
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: cd-prod
+  cancel-in-progress: false
+
+jobs:
+  rull-ut:
+    runs-on: ubuntu-latest
+    environment: prod
+
+    env:
+      ARM_USE_OIDC: true
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      TF_IN_AUTOMATION: true
+
+    steps:
+      - name: Hent commiten som skal promoteres
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0
+
+      - name: Sjekk at commiten ligger på main
+        env:
+          SHA: ${{ inputs.sha }}
+        run: |
+          if ! git merge-base --is-ancestor "$SHA" origin/main; then
+            echo "::error::$SHA ligger ikke på main. Bare commits som er merget, kan promoteres."
+            exit 1
+          fi
+          echo "OK: $SHA ligger på main."
+
+      - name: Installer Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.0
+          terraform_wrapper: false
+
+      - name: Logg inn i Azure
+        uses: Azure/login@v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Hvem er jeg
+        run: az account show --query "{navn:name, type:user.type, bruker:user.name}" -o json
+
+      - name: Plan og apply
+        run: bash scripts/kjor.sh prod apply
+
+      - name: Skriv oppsummering
+        if: always()
+        env:
+          SHA: ${{ inputs.sha }}
+        run: |
+          {
+            echo "## Promotering til prod"
+            echo
+            echo "Commit: \`$SHA\`"
+            echo
+            cat rapport.md 2>/dev/null || true
+          } >> "$GITHUB_STEP_SUMMARY"

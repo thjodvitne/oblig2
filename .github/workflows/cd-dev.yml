@@ -1,0 +1,81 @@
+# =============================================================================
+#  .github/workflows/cd-dev.yml  –  alt som merges til main, går rett til dev
+# -----------------------------------------------------------------------------
+#  Stackene rulles ut i rekkefølgen kjor.sh bestemmer (se LAG der).
+#
+#  Kan også startes for hånd (Run workflow). Det trenger du hver morgen:
+#  nattjobben sletter ressursgruppene dine, men ikke staten, så en ny kjøring
+#  bygger alt opp igjen.
+# =============================================================================
+
+name: CD dev
+
+run-name: dev ← ${{ github.sha }}
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "stacks/**"
+      - "modules/**"
+      - "config/**"
+      - "shared/**"
+      - "scripts/kjor.sh"
+      - ".github/workflows/cd-dev.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: cd-dev
+  cancel-in-progress: false
+
+jobs:
+  rull-ut:
+    runs-on: ubuntu-latest
+    environment: dev
+
+    env:
+      ARM_USE_OIDC: true
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      TF_IN_AUTOMATION: true
+
+    steps:
+      - name: Hent koden
+        uses: actions/checkout@v5
+
+      - name: Installer Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.0
+          terraform_wrapper: false
+
+      - name: Logg inn i Azure
+        uses: Azure/login@v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Hvem er jeg
+        run: az account show --query "{navn:name, type:user.type, bruker:user.name}" -o json
+
+      - name: Plan og apply
+        run: bash scripts/kjor.sh dev apply
+
+      - name: Skriv oppsummering
+        if: always()
+        run: |
+          {
+            echo "## Utrulling til dev"
+            echo
+            echo "Commit: \`${{ github.sha }}\`"
+            echo
+            cat rapport.md 2>/dev/null || true
+            echo
+            echo "**Til prod:** Actions → *CD prod* → *Run workflow* → lim inn SHA-en over."
+          } >> "$GITHUB_STEP_SUMMARY"

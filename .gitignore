@@ -1,0 +1,23 @@
+# State bor i Azure, aldri i repoet. Den kan inneholde hemmeligheter i klartekst.
+*.tfstate
+*.tfstate.*
+crash.log
+
+# Genereres av `terraform init`.
+.terraform/
+
+# Planfiler er binære og kan inneholde verdier fra state.
+*.tfplan
+tfplan
+
+# Skrives av scripts/kjor.sh.
+rapport.md
+plan.txt
+init.log
+
+# Private nøkler skal aldri i repoet.
+*.pem
+id_rsa
+id_ed25519
+
+.DS_Store

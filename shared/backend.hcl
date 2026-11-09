@@ -6,6 +6,6 @@
 # oblig2/ i containeren, så den blander seg ikke med oblig 1.
 
 resource_group_name  = "rg-jml-tfstate"
-storage_account_name = "stjmltfstate16050"
+storage_account_name = "stjmltfstate9843"
 container_name       = "tfstate"
 use_azuread_auth     = true

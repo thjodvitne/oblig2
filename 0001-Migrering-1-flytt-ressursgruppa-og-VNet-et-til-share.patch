@@ -1,0 +1,351 @@
+From 6ceb89c6e05f6886495a0349d2d01228f25449d4 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 12 Nov 2026 13:55:32 +0100
+Subject: [PATCH 1/3] Migrering 1: flytt ressursgruppa og VNet-et til
+ shared-network
+
+---
+ config/dev/network.tfvars                 |  2 --
+ config/dev/shared-network.tfvars          |  1 +
+ config/prod/network.tfvars                |  2 --
+ config/prod/shared-network.tfvars         |  1 +
+ stacks/network/main.tf                    | 38 +++++++++++++----------
+ stacks/network/outputs.tf                 |  6 ++--
+ stacks/network/variables.tf               |  5 ---
+ stacks/shared-network/.terraform.lock.hcl | 25 +++++++++++++++
+ stacks/shared-network/import.tf           | 19 ++++++++++++
+ stacks/shared-network/main.tf             | 28 +++++++++++++++++
+ stacks/shared-network/outputs.tf          | 24 ++++++++++++++
+ stacks/shared-network/variables.tf        | 29 +++++++++++++++++
+ stacks/shared-network/versions.tf         | 19 ++++++++++++
+ 13 files changed, 171 insertions(+), 28 deletions(-)
+ create mode 100644 config/dev/shared-network.tfvars
+ create mode 100644 config/prod/shared-network.tfvars
+ create mode 100644 stacks/shared-network/.terraform.lock.hcl
+ create mode 100644 stacks/shared-network/import.tf
+ create mode 100644 stacks/shared-network/main.tf
+ create mode 100644 stacks/shared-network/outputs.tf
+ create mode 100644 stacks/shared-network/variables.tf
+ create mode 100644 stacks/shared-network/versions.tf
+
+diff --git a/config/dev/network.tfvars b/config/dev/network.tfvars
+index cba3248..ff7c855 100644
+--- a/config/dev/network.tfvars
++++ b/config/dev/network.tfvars
+@@ -1,5 +1,3 @@
+-address_space = ["10.10.0.0/23"]
+-
+ tjenester = {
+   ordre = { prefix = "10.10.0.0/24", runtime = "vm" }
+   meny  = { prefix = "10.10.1.0/24", runtime = "webapp" }
+diff --git a/config/dev/shared-network.tfvars b/config/dev/shared-network.tfvars
+new file mode 100644
+index 0000000..564ca09
+--- /dev/null
++++ b/config/dev/shared-network.tfvars
+@@ -0,0 +1 @@
++address_space = ["10.10.0.0/23"]
+diff --git a/config/prod/network.tfvars b/config/prod/network.tfvars
+index ceab2ff..6932e3d 100644
+--- a/config/prod/network.tfvars
++++ b/config/prod/network.tfvars
+@@ -1,5 +1,3 @@
+-address_space = ["10.20.0.0/23"]
+-
+ tjenester = {
+   ordre = { prefix = "10.20.0.0/24", runtime = "vm" }
+   meny  = { prefix = "10.20.1.0/24", runtime = "webapp" }
+diff --git a/config/prod/shared-network.tfvars b/config/prod/shared-network.tfvars
+new file mode 100644
+index 0000000..a873899
+--- /dev/null
++++ b/config/prod/shared-network.tfvars
+@@ -0,0 +1 @@
++address_space = ["10.20.0.0/23"]
+diff --git a/stacks/network/main.tf b/stacks/network/main.tf
+index 43c3b34..e7d7d3e 100644
+--- a/stacks/network/main.tf
++++ b/stacks/network/main.tf
+@@ -1,7 +1,11 @@
+-# Nettverkslaget for ALLE tjenestene: ressursgruppa, VNet-et, og ett subnett
+-# med NSG per tjeneste.
++# Nettverkslaget for ALLE tjenestene. Under migrering: ressursgruppa og VNet-et
++# er flyttet til stacks/shared-network. Bare subnettene står igjen her.
+ 
+ locals {
++  # Navnene, ikke ressursene: de eies nå av shared-network.
++  rg_navn   = "rg-${var.kortnavn}-oblig2-${var.miljo}"
++  vnet_navn = "vnet-${var.kortnavn}-${var.miljo}"
++
+   tags = {
+     eier  = var.kortnavn
+     miljo = var.miljo
+@@ -9,19 +13,21 @@ locals {
+   }
+ }
+ 
+-resource "azurerm_resource_group" "this" {
+-  name     = "rg-${var.kortnavn}-oblig2-${var.miljo}"
+-  location = var.location
+-  tags     = local.tags
++# Flyttet til shared-network. Glem dem her, uten å slette dem i Azure.
++removed {
++  from = azurerm_resource_group.this
++
++  lifecycle {
++    destroy = false
++  }
+ }
+ 
+-module "vnet" {
+-  source              = "../../modules/vnet"
+-  name                = "vnet-${var.kortnavn}-${var.miljo}"
+-  resource_group_name = azurerm_resource_group.this.name
+-  location            = azurerm_resource_group.this.location
+-  address_space       = var.address_space
+-  tags                = local.tags
++removed {
++  from = module.vnet
++
++  lifecycle {
++    destroy = false
++  }
+ }
+ 
+ module "subnet" {
+@@ -29,9 +35,9 @@ module "subnet" {
+   for_each = var.tjenester
+ 
+   service             = each.key
+-  resource_group_name = azurerm_resource_group.this.name
+-  location            = azurerm_resource_group.this.location
+-  vnet_name           = module.vnet.name
++  resource_group_name = local.rg_navn
++  location            = var.location
++  vnet_name           = local.vnet_navn
+   prefix              = each.value.prefix
+   delegate_web        = each.value.runtime == "webapp"
+   allow_http_from     = var.allow_http_from
+diff --git a/stacks/network/outputs.tf b/stacks/network/outputs.tf
+index 924cb20..290a77f 100644
+--- a/stacks/network/outputs.tf
++++ b/stacks/network/outputs.tf
+@@ -1,16 +1,16 @@
+ output "resource_group_name" {
+   description = "Ressursgruppa alle stackene bruker."
+-  value       = azurerm_resource_group.this.name
++  value       = local.rg_navn
+ }
+ 
+ output "location" {
+   description = "Regionen alt står i."
+-  value       = azurerm_resource_group.this.location
++  value       = var.location
+ }
+ 
+ output "vnet_name" {
+   description = "Navnet på VNet-et."
+-  value       = module.vnet.name
++  value       = local.vnet_navn
+ }
+ 
+ output "subnet_ids" {
+diff --git a/stacks/network/variables.tf b/stacks/network/variables.tf
+index 59e3e35..009ae53 100644
+--- a/stacks/network/variables.tf
++++ b/stacks/network/variables.tf
+@@ -23,11 +23,6 @@ variable "miljo" {
+   }
+ }
+ 
+-variable "address_space" {
+-  description = "Adresserommet til VNet-et."
+-  type        = list(string)
+-}
+-
+ variable "tjenester" {
+   description = "Tjenestene som skal ha et subnett: adresseområde og kjøremiljø. runtime = \"webapp\" gir et subnett delegert til App Service."
+   type = map(object({
+diff --git a/stacks/shared-network/.terraform.lock.hcl b/stacks/shared-network/.terraform.lock.hcl
+new file mode 100644
+index 0000000..fb150fe
+--- /dev/null
++++ b/stacks/shared-network/.terraform.lock.hcl
+@@ -0,0 +1,25 @@
++# This file is maintained automatically by "terraform init".
++# Manual edits may be lost in future updates.
++
++provider "registry.terraform.io/hashicorp/azurerm" {
++  version     = "5.11.0"
++  constraints = "~> 5.4"
++  hashes = [
++    "h1:6OVoAYFOZ5OPkpJT5lS4Pt14o5a0LRjJgDPGBt/1VfE=",
++    "h1:BNenr7M3gkRwRNw4fJ9cSGgjrbC4K4Mi3TTRDOvG5no=",
++    "h1:QldFxdezZrp3E1bKnWS7xcU63Zmol1K7siWsXS2S3pg=",
++    "h1:pZJ3HOERxQUnw4kbPZ0KHRihAIrxiE2+duDOnxFrJgg=",
++    "zh:2345a6104bb485141afb8f0047a48a5f27c3bb4e6eeb360c7955f381227d88dd",
++    "zh:34e86c5ceeba746fed119775cd37d7314ea8b7c2196ed8b8da8d8d71e10b96df",
++    "zh:358f30581df0670719fc8511066ef9d05eb2612934c147bfe1b1b1d67712d2f0",
++    "zh:3edb6681e17535f16ad1f2b7588325d86d7af57df9eed82fa4a607fc03e8afc7",
++    "zh:6a5b9d6dd86a759f8bfd81e15e7e688531c85ee9660bd5923f99e993a1f15c62",
++    "zh:78d5eefdd9e494defcb3c68d282b8f96630502cac21d1ea161f53cfe9bb483b3",
++    "zh:a470dc95f15dcded2e06dd45c44c3b50a22a45b87c9ba7bd19dc6b25022660b7",
++    "zh:b179f04830c1d8d7ec15ae4be4434042d87679bb23b7d60d7ebd751420bf646c",
++    "zh:b183835acbcf39047d195f933caebd1902065d2437df17e964ceb4a358441f41",
++    "zh:b3d3555ac1f16a59baaab894fe9e839baedc809aef05a6d8e6c0cdaba9c92749",
++    "zh:cc29f59113d468757e9f1a3db774c73d8827f8359816216b7b82ddef5ff02d66",
++    "zh:e37d3649320c50110675156174f476b3b12ca5c1f267f1cadb56ad26e7f3553e",
++  ]
++}
+diff --git a/stacks/shared-network/import.tf b/stacks/shared-network/import.tf
+new file mode 100644
+index 0000000..16f0b2c
+--- /dev/null
++++ b/stacks/shared-network/import.tf
+@@ -0,0 +1,19 @@
++# MIDLERTIDIG: flytter ressursgruppa og VNet-et hit fra network-stacken.
++# network har removed med destroy = false for de samme ressursene.
++# Slettes i opprydnings-PR-en (K8).
++#
++# ID-ene bygges, de skrives ikke av (K5): abonnementet kommer fra
++# data-kilden, ikke fra koden.
++
++# tflint-ignore: terraform_unused_declarations # Brukes bare av import-blokkene under
++data "azurerm_subscription" "current" {}
++
++import {
++  to = azurerm_resource_group.this
++  id = "${data.azurerm_subscription.current.id}/resourceGroups/${local.rg_navn}"
++}
++
++import {
++  to = module.vnet.azurerm_virtual_network.this
++  id = "${data.azurerm_subscription.current.id}/resourceGroups/${local.rg_navn}/providers/Microsoft.Network/virtualNetworks/${local.vnet_navn}"
++}
+diff --git a/stacks/shared-network/main.tf b/stacks/shared-network/main.tf
+new file mode 100644
+index 0000000..2258cff
+--- /dev/null
++++ b/stacks/shared-network/main.tf
+@@ -0,0 +1,28 @@
++# Det tjenestene faktisk deler: ressursgruppa og VNet-et. Subnettene eies av
++# hver sin instans av stacks/service.
++
++locals {
++  rg_navn   = "rg-${var.kortnavn}-oblig2-${var.miljo}"
++  vnet_navn = "vnet-${var.kortnavn}-${var.miljo}"
++
++  tags = {
++    eier  = var.kortnavn
++    miljo = var.miljo
++    kurs  = "dcst3005-oblig2"
++  }
++}
++
++resource "azurerm_resource_group" "this" {
++  name     = local.rg_navn
++  location = var.location
++  tags     = local.tags
++}
++
++module "vnet" {
++  source              = "../../modules/vnet"
++  name                = local.vnet_navn
++  resource_group_name = azurerm_resource_group.this.name
++  location            = azurerm_resource_group.this.location
++  address_space       = var.address_space
++  tags                = local.tags
++}
+diff --git a/stacks/shared-network/outputs.tf b/stacks/shared-network/outputs.tf
+new file mode 100644
+index 0000000..32963d5
+--- /dev/null
++++ b/stacks/shared-network/outputs.tf
+@@ -0,0 +1,24 @@
++output "resource_group_name" {
++  description = "Ressursgruppa alle tjenestene står i."
++  value       = azurerm_resource_group.this.name
++}
++
++output "resource_group_id" {
++  description = "Ressurs-ID-en til ressursgruppa. Service-stacken bygger import-ID-ene sine fra den."
++  value       = azurerm_resource_group.this.id
++}
++
++output "location" {
++  description = "Regionen alt står i."
++  value       = azurerm_resource_group.this.location
++}
++
++output "vnet_name" {
++  description = "Navnet på VNet-et."
++  value       = module.vnet.name
++}
++
++output "vnet_id" {
++  description = "Ressurs-ID-en til VNet-et."
++  value       = module.vnet.id
++}
+diff --git a/stacks/shared-network/variables.tf b/stacks/shared-network/variables.tf
+new file mode 100644
+index 0000000..27b4d76
+--- /dev/null
++++ b/stacks/shared-network/variables.tf
+@@ -0,0 +1,29 @@
++variable "kortnavn" {
++  description = "Kortnavnet ditt. Settes i config/felles.tfvars."
++  type        = string
++
++  validation {
++    condition     = can(regex("^[a-z0-9]{2,10}$", var.kortnavn))
++    error_message = "kortnavn må være 2–10 små bokstaver eller tall. Sett det i config/felles.tfvars."
++  }
++}
++
++variable "location" {
++  description = "Azure-regionen. Settes i config/felles.tfvars."
++  type        = string
++}
++
++variable "miljo" {
++  description = "Miljøet. Settes av scripts/kjor.sh (TF_VAR_miljo), ikke i en .tfvars-fil."
++  type        = string
++
++  validation {
++    condition     = contains(["dev", "prod"], var.miljo)
++    error_message = "miljo må være dev eller prod."
++  }
++}
++
++variable "address_space" {
++  description = "Adresserommet til VNet-et."
++  type        = list(string)
++}
+diff --git a/stacks/shared-network/versions.tf b/stacks/shared-network/versions.tf
+new file mode 100644
+index 0000000..6887fb8
+--- /dev/null
++++ b/stacks/shared-network/versions.tf
+@@ -0,0 +1,19 @@
++terraform {
++  required_version = ">= 1.16.0"
++
++  # Tom med vilje. Adressen kommer fra shared/backend.hcl, og key fra
++  # scripts/kjor.sh: oblig2/<miljø>/<navn på config-fila>.tfstate
++  backend "azurerm" {}
++
++  required_providers {
++    azurerm = {
++      source  = "hashicorp/azurerm"
++      version = "~> 5.4"
++    }
++  }
++}
++
++# Abonnementet kommer fra ARM_SUBSCRIPTION_ID, ikke fra koden.
++provider "azurerm" {
++  features {}
++}
+-- 
+2.43.0
+

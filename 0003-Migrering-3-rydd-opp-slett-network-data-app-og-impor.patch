@@ -1,0 +1,481 @@
+From cebe4d0bace2e87856e7a4715534db36bf1c0441 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 12 Nov 2026 13:56:20 +0100
+Subject: [PATCH 3/3] =?UTF-8?q?Migrering=203:=20rydd=20opp=20=E2=80=93=20s?=
+ =?UTF-8?q?lett=20network,=20data,=20app=20og=20import-blokkene?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ config/dev/app.tfvars              |  9 ----
+ config/dev/data.tfvars             |  1 -
+ config/dev/network.tfvars          |  4 --
+ config/prod/app.tfvars             |  9 ----
+ config/prod/data.tfvars            |  1 -
+ config/prod/network.tfvars         |  4 --
+ scripts/kjor.sh                    |  2 +-
+ stacks/app/.terraform.lock.hcl     | 25 ----------
+ stacks/app/main.tf                 | 18 -------
+ stacks/app/versions.tf             | 19 --------
+ stacks/data/.terraform.lock.hcl    | 25 ----------
+ stacks/data/main.tf                | 18 -------
+ stacks/data/versions.tf            | 19 --------
+ stacks/network/.terraform.lock.hcl | 25 ----------
+ stacks/network/main.tf             | 26 -----------
+ stacks/network/versions.tf         | 19 --------
+ stacks/service/import.tf           | 75 ------------------------------
+ stacks/shared-network/import.tf    | 19 --------
+ 18 files changed, 1 insertion(+), 317 deletions(-)
+ delete mode 100644 config/dev/app.tfvars
+ delete mode 100644 config/dev/data.tfvars
+ delete mode 100644 config/dev/network.tfvars
+ delete mode 100644 config/prod/app.tfvars
+ delete mode 100644 config/prod/data.tfvars
+ delete mode 100644 config/prod/network.tfvars
+ delete mode 100644 stacks/app/.terraform.lock.hcl
+ delete mode 100644 stacks/app/main.tf
+ delete mode 100644 stacks/app/versions.tf
+ delete mode 100644 stacks/data/.terraform.lock.hcl
+ delete mode 100644 stacks/data/main.tf
+ delete mode 100644 stacks/data/versions.tf
+ delete mode 100644 stacks/network/.terraform.lock.hcl
+ delete mode 100644 stacks/network/main.tf
+ delete mode 100644 stacks/network/versions.tf
+ delete mode 100644 stacks/service/import.tf
+ delete mode 100644 stacks/shared-network/import.tf
+
+diff --git a/config/dev/app.tfvars b/config/dev/app.tfvars
+deleted file mode 100644
+index 0caaab1..0000000
+--- a/config/dev/app.tfvars
++++ /dev/null
+@@ -1,9 +0,0 @@
+-tjenester = {
+-  ordre = "vm"
+-  meny  = "webapp"
+-}
+-
+-# En offentlig nøkkel uten tilhørende privat nøkkel: ingen kan logge inn på
+-# VM-en, og det trenger du heller ikke. Vil du logge inn, bytt den ut med
+-# innholdet i din egen .pub-fil. Den PRIVATE nøkkelen skal aldri i repoet.
+-ssh_public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGMQ32gu8mGVI86gkUex5JsBeg7WC58bsUOVuxmeHDJW oblig2-ingen-privat-nokkel"
+diff --git a/config/dev/data.tfvars b/config/dev/data.tfvars
+deleted file mode 100644
+index e574300..0000000
+--- a/config/dev/data.tfvars
++++ /dev/null
+@@ -1 +0,0 @@
+-tjenester = ["ordre", "meny"]
+diff --git a/config/dev/network.tfvars b/config/dev/network.tfvars
+deleted file mode 100644
+index ff7c855..0000000
+--- a/config/dev/network.tfvars
++++ /dev/null
+@@ -1,4 +0,0 @@
+-tjenester = {
+-  ordre = { prefix = "10.10.0.0/24", runtime = "vm" }
+-  meny  = { prefix = "10.10.1.0/24", runtime = "webapp" }
+-}
+diff --git a/config/prod/app.tfvars b/config/prod/app.tfvars
+deleted file mode 100644
+index 0caaab1..0000000
+--- a/config/prod/app.tfvars
++++ /dev/null
+@@ -1,9 +0,0 @@
+-tjenester = {
+-  ordre = "vm"
+-  meny  = "webapp"
+-}
+-
+-# En offentlig nøkkel uten tilhørende privat nøkkel: ingen kan logge inn på
+-# VM-en, og det trenger du heller ikke. Vil du logge inn, bytt den ut med
+-# innholdet i din egen .pub-fil. Den PRIVATE nøkkelen skal aldri i repoet.
+-ssh_public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGMQ32gu8mGVI86gkUex5JsBeg7WC58bsUOVuxmeHDJW oblig2-ingen-privat-nokkel"
+diff --git a/config/prod/data.tfvars b/config/prod/data.tfvars
+deleted file mode 100644
+index e574300..0000000
+--- a/config/prod/data.tfvars
++++ /dev/null
+@@ -1 +0,0 @@
+-tjenester = ["ordre", "meny"]
+diff --git a/config/prod/network.tfvars b/config/prod/network.tfvars
+deleted file mode 100644
+index 6932e3d..0000000
+--- a/config/prod/network.tfvars
++++ /dev/null
+@@ -1,4 +0,0 @@
+-tjenester = {
+-  ordre = { prefix = "10.20.0.0/24", runtime = "vm" }
+-  meny  = { prefix = "10.20.1.0/24", runtime = "webapp" }
+-}
+diff --git a/scripts/kjor.sh b/scripts/kjor.sh
+index a3167e8..dba5f7b 100755
+--- a/scripts/kjor.sh
++++ b/scripts/kjor.sh
+@@ -39,7 +39,7 @@
+ 
+ set -uo pipefail
+ 
+-LAG="network shared-network data app service"
++LAG="shared-network service"
+ 
+ MILJO="${1:-}"
+ HANDLING="${2:-}"
+diff --git a/stacks/app/.terraform.lock.hcl b/stacks/app/.terraform.lock.hcl
+deleted file mode 100644
+index fb150fe..0000000
+--- a/stacks/app/.terraform.lock.hcl
++++ /dev/null
+@@ -1,25 +0,0 @@
+-# This file is maintained automatically by "terraform init".
+-# Manual edits may be lost in future updates.
+-
+-provider "registry.terraform.io/hashicorp/azurerm" {
+-  version     = "5.11.0"
+-  constraints = "~> 5.4"
+-  hashes = [
+-    "h1:6OVoAYFOZ5OPkpJT5lS4Pt14o5a0LRjJgDPGBt/1VfE=",
+-    "h1:BNenr7M3gkRwRNw4fJ9cSGgjrbC4K4Mi3TTRDOvG5no=",
+-    "h1:QldFxdezZrp3E1bKnWS7xcU63Zmol1K7siWsXS2S3pg=",
+-    "h1:pZJ3HOERxQUnw4kbPZ0KHRihAIrxiE2+duDOnxFrJgg=",
+-    "zh:2345a6104bb485141afb8f0047a48a5f27c3bb4e6eeb360c7955f381227d88dd",
+-    "zh:34e86c5ceeba746fed119775cd37d7314ea8b7c2196ed8b8da8d8d71e10b96df",
+-    "zh:358f30581df0670719fc8511066ef9d05eb2612934c147bfe1b1b1d67712d2f0",
+-    "zh:3edb6681e17535f16ad1f2b7588325d86d7af57df9eed82fa4a607fc03e8afc7",
+-    "zh:6a5b9d6dd86a759f8bfd81e15e7e688531c85ee9660bd5923f99e993a1f15c62",
+-    "zh:78d5eefdd9e494defcb3c68d282b8f96630502cac21d1ea161f53cfe9bb483b3",
+-    "zh:a470dc95f15dcded2e06dd45c44c3b50a22a45b87c9ba7bd19dc6b25022660b7",
+-    "zh:b179f04830c1d8d7ec15ae4be4434042d87679bb23b7d60d7ebd751420bf646c",
+-    "zh:b183835acbcf39047d195f933caebd1902065d2437df17e964ceb4a358441f41",
+-    "zh:b3d3555ac1f16a59baaab894fe9e839baedc809aef05a6d8e6c0cdaba9c92749",
+-    "zh:cc29f59113d468757e9f1a3db774c73d8827f8359816216b7b82ddef5ff02d66",
+-    "zh:e37d3649320c50110675156174f476b3b12ca5c1f267f1cadb56ad26e7f3553e",
+-  ]
+-}
+diff --git a/stacks/app/main.tf b/stacks/app/main.tf
+deleted file mode 100644
+index 2e232b0..0000000
+--- a/stacks/app/main.tf
++++ /dev/null
+@@ -1,18 +0,0 @@
+-# Tømt under migreringen. VM-en og web app-en eies nå av hver sin instans
+-# av service. Stacken slettes i opprydnings-PR-en.
+-
+-removed {
+-  from = module.vm
+-
+-  lifecycle {
+-    destroy = false
+-  }
+-}
+-
+-removed {
+-  from = module.webapp
+-
+-  lifecycle {
+-    destroy = false
+-  }
+-}
+diff --git a/stacks/app/versions.tf b/stacks/app/versions.tf
+deleted file mode 100644
+index 6887fb8..0000000
+--- a/stacks/app/versions.tf
++++ /dev/null
+@@ -1,19 +0,0 @@
+-terraform {
+-  required_version = ">= 1.16.0"
+-
+-  # Tom med vilje. Adressen kommer fra shared/backend.hcl, og key fra
+-  # scripts/kjor.sh: oblig2/<miljø>/<navn på config-fila>.tfstate
+-  backend "azurerm" {}
+-
+-  required_providers {
+-    azurerm = {
+-      source  = "hashicorp/azurerm"
+-      version = "~> 5.4"
+-    }
+-  }
+-}
+-
+-# Abonnementet kommer fra ARM_SUBSCRIPTION_ID, ikke fra koden.
+-provider "azurerm" {
+-  features {}
+-}
+diff --git a/stacks/data/.terraform.lock.hcl b/stacks/data/.terraform.lock.hcl
+deleted file mode 100644
+index fb150fe..0000000
+--- a/stacks/data/.terraform.lock.hcl
++++ /dev/null
+@@ -1,25 +0,0 @@
+-# This file is maintained automatically by "terraform init".
+-# Manual edits may be lost in future updates.
+-
+-provider "registry.terraform.io/hashicorp/azurerm" {
+-  version     = "5.11.0"
+-  constraints = "~> 5.4"
+-  hashes = [
+-    "h1:6OVoAYFOZ5OPkpJT5lS4Pt14o5a0LRjJgDPGBt/1VfE=",
+-    "h1:BNenr7M3gkRwRNw4fJ9cSGgjrbC4K4Mi3TTRDOvG5no=",
+-    "h1:QldFxdezZrp3E1bKnWS7xcU63Zmol1K7siWsXS2S3pg=",
+-    "h1:pZJ3HOERxQUnw4kbPZ0KHRihAIrxiE2+duDOnxFrJgg=",
+-    "zh:2345a6104bb485141afb8f0047a48a5f27c3bb4e6eeb360c7955f381227d88dd",
+-    "zh:34e86c5ceeba746fed119775cd37d7314ea8b7c2196ed8b8da8d8d71e10b96df",
+-    "zh:358f30581df0670719fc8511066ef9d05eb2612934c147bfe1b1b1d67712d2f0",
+-    "zh:3edb6681e17535f16ad1f2b7588325d86d7af57df9eed82fa4a607fc03e8afc7",
+-    "zh:6a5b9d6dd86a759f8bfd81e15e7e688531c85ee9660bd5923f99e993a1f15c62",
+-    "zh:78d5eefdd9e494defcb3c68d282b8f96630502cac21d1ea161f53cfe9bb483b3",
+-    "zh:a470dc95f15dcded2e06dd45c44c3b50a22a45b87c9ba7bd19dc6b25022660b7",
+-    "zh:b179f04830c1d8d7ec15ae4be4434042d87679bb23b7d60d7ebd751420bf646c",
+-    "zh:b183835acbcf39047d195f933caebd1902065d2437df17e964ceb4a358441f41",
+-    "zh:b3d3555ac1f16a59baaab894fe9e839baedc809aef05a6d8e6c0cdaba9c92749",
+-    "zh:cc29f59113d468757e9f1a3db774c73d8827f8359816216b7b82ddef5ff02d66",
+-    "zh:e37d3649320c50110675156174f476b3b12ca5c1f267f1cadb56ad26e7f3553e",
+-  ]
+-}
+diff --git a/stacks/data/main.tf b/stacks/data/main.tf
+deleted file mode 100644
+index 4da9545..0000000
+--- a/stacks/data/main.tf
++++ /dev/null
+@@ -1,18 +0,0 @@
+-# Tømt under migreringen. Storage account og Key Vault eies nå av hver
+-# sin instans av service. Stacken slettes i opprydnings-PR-en.
+-
+-removed {
+-  from = module.storage
+-
+-  lifecycle {
+-    destroy = false
+-  }
+-}
+-
+-removed {
+-  from = module.keyvault
+-
+-  lifecycle {
+-    destroy = false
+-  }
+-}
+diff --git a/stacks/data/versions.tf b/stacks/data/versions.tf
+deleted file mode 100644
+index 6887fb8..0000000
+--- a/stacks/data/versions.tf
++++ /dev/null
+@@ -1,19 +0,0 @@
+-terraform {
+-  required_version = ">= 1.16.0"
+-
+-  # Tom med vilje. Adressen kommer fra shared/backend.hcl, og key fra
+-  # scripts/kjor.sh: oblig2/<miljø>/<navn på config-fila>.tfstate
+-  backend "azurerm" {}
+-
+-  required_providers {
+-    azurerm = {
+-      source  = "hashicorp/azurerm"
+-      version = "~> 5.4"
+-    }
+-  }
+-}
+-
+-# Abonnementet kommer fra ARM_SUBSCRIPTION_ID, ikke fra koden.
+-provider "azurerm" {
+-  features {}
+-}
+diff --git a/stacks/network/.terraform.lock.hcl b/stacks/network/.terraform.lock.hcl
+deleted file mode 100644
+index fb150fe..0000000
+--- a/stacks/network/.terraform.lock.hcl
++++ /dev/null
+@@ -1,25 +0,0 @@
+-# This file is maintained automatically by "terraform init".
+-# Manual edits may be lost in future updates.
+-
+-provider "registry.terraform.io/hashicorp/azurerm" {
+-  version     = "5.11.0"
+-  constraints = "~> 5.4"
+-  hashes = [
+-    "h1:6OVoAYFOZ5OPkpJT5lS4Pt14o5a0LRjJgDPGBt/1VfE=",
+-    "h1:BNenr7M3gkRwRNw4fJ9cSGgjrbC4K4Mi3TTRDOvG5no=",
+-    "h1:QldFxdezZrp3E1bKnWS7xcU63Zmol1K7siWsXS2S3pg=",
+-    "h1:pZJ3HOERxQUnw4kbPZ0KHRihAIrxiE2+duDOnxFrJgg=",
+-    "zh:2345a6104bb485141afb8f0047a48a5f27c3bb4e6eeb360c7955f381227d88dd",
+-    "zh:34e86c5ceeba746fed119775cd37d7314ea8b7c2196ed8b8da8d8d71e10b96df",
+-    "zh:358f30581df0670719fc8511066ef9d05eb2612934c147bfe1b1b1d67712d2f0",
+-    "zh:3edb6681e17535f16ad1f2b7588325d86d7af57df9eed82fa4a607fc03e8afc7",
+-    "zh:6a5b9d6dd86a759f8bfd81e15e7e688531c85ee9660bd5923f99e993a1f15c62",
+-    "zh:78d5eefdd9e494defcb3c68d282b8f96630502cac21d1ea161f53cfe9bb483b3",
+-    "zh:a470dc95f15dcded2e06dd45c44c3b50a22a45b87c9ba7bd19dc6b25022660b7",
+-    "zh:b179f04830c1d8d7ec15ae4be4434042d87679bb23b7d60d7ebd751420bf646c",
+-    "zh:b183835acbcf39047d195f933caebd1902065d2437df17e964ceb4a358441f41",
+-    "zh:b3d3555ac1f16a59baaab894fe9e839baedc809aef05a6d8e6c0cdaba9c92749",
+-    "zh:cc29f59113d468757e9f1a3db774c73d8827f8359816216b7b82ddef5ff02d66",
+-    "zh:e37d3649320c50110675156174f476b3b12ca5c1f267f1cadb56ad26e7f3553e",
+-  ]
+-}
+diff --git a/stacks/network/main.tf b/stacks/network/main.tf
+deleted file mode 100644
+index c3ae21c..0000000
+--- a/stacks/network/main.tf
++++ /dev/null
+@@ -1,26 +0,0 @@
+-# Tømt under migreringen. Alt som sto her, eies nå av shared-network eller
+-# service. Stacken slettes i opprydnings-PR-en.
+-
+-removed {
+-  from = azurerm_resource_group.this
+-
+-  lifecycle {
+-    destroy = false
+-  }
+-}
+-
+-removed {
+-  from = module.vnet
+-
+-  lifecycle {
+-    destroy = false
+-  }
+-}
+-
+-removed {
+-  from = module.subnet
+-
+-  lifecycle {
+-    destroy = false
+-  }
+-}
+diff --git a/stacks/network/versions.tf b/stacks/network/versions.tf
+deleted file mode 100644
+index 6887fb8..0000000
+--- a/stacks/network/versions.tf
++++ /dev/null
+@@ -1,19 +0,0 @@
+-terraform {
+-  required_version = ">= 1.16.0"
+-
+-  # Tom med vilje. Adressen kommer fra shared/backend.hcl, og key fra
+-  # scripts/kjor.sh: oblig2/<miljø>/<navn på config-fila>.tfstate
+-  backend "azurerm" {}
+-
+-  required_providers {
+-    azurerm = {
+-      source  = "hashicorp/azurerm"
+-      version = "~> 5.4"
+-    }
+-  }
+-}
+-
+-# Abonnementet kommer fra ARM_SUBSCRIPTION_ID, ikke fra koden.
+-provider "azurerm" {
+-  features {}
+-}
+diff --git a/stacks/service/import.tf b/stacks/service/import.tf
+deleted file mode 100644
+index f3ff99e..0000000
+--- a/stacks/service/import.tf
++++ /dev/null
+@@ -1,75 +0,0 @@
+-# MIDLERTIDIG: flytter tjenestens ressurser hit fra network, data og app.
+-# De gamle stackene har removed med destroy = false for de samme ressursene.
+-# Slettes i opprydnings-PR-en (K8).
+-#
+-# ID-ene bygges av ID-ene shared-network gir ut, så ingen abonnements-ID
+-# står i koden (K5).
+-
+-# --- fra network ---------------------------------------------------------
+-
+-import {
+-  to = module.subnet.azurerm_subnet.this
+-  id = "${local.nett.vnet_id}/subnets/snet-${var.tjeneste}"
+-}
+-
+-import {
+-  to = module.subnet.azurerm_network_security_group.this
+-  id = "${local.nett.resource_group_id}/providers/Microsoft.Network/networkSecurityGroups/nsg-${var.tjeneste}"
+-}
+-
+-import {
+-  to = module.subnet.azurerm_network_security_rule.http
+-  id = "${local.nett.resource_group_id}/providers/Microsoft.Network/networkSecurityGroups/nsg-${var.tjeneste}/securityRules/allow-http"
+-}
+-
+-# Lett å glemme: koblingen er en egen ressurs. Import-ID-en er subnettets ID.
+-import {
+-  to = module.subnet.azurerm_subnet_network_security_group_association.this
+-  id = "${local.nett.vnet_id}/subnets/snet-${var.tjeneste}"
+-}
+-
+-# --- fra data ------------------------------------------------------------
+-
+-import {
+-  to = module.storage.azurerm_storage_account.this
+-  id = "${local.nett.resource_group_id}/providers/Microsoft.Storage/storageAccounts/st${var.kortnavn}${var.tjeneste}${var.miljo}"
+-}
+-
+-import {
+-  to = module.keyvault.azurerm_key_vault.this
+-  id = "${local.nett.resource_group_id}/providers/Microsoft.KeyVault/vaults/kv-${var.kortnavn}-${var.tjeneste}-${var.miljo}"
+-}
+-
+-# --- fra app: VM (bare når runtime = vm) --------------------------------
+-
+-import {
+-  for_each = local.vm
+-  to       = module.vm[each.key].azurerm_public_ip.this
+-  id       = "${local.nett.resource_group_id}/providers/Microsoft.Network/publicIPAddresses/pip-${each.key}"
+-}
+-
+-import {
+-  for_each = local.vm
+-  to       = module.vm[each.key].azurerm_network_interface.this
+-  id       = "${local.nett.resource_group_id}/providers/Microsoft.Network/networkInterfaces/nic-${each.key}"
+-}
+-
+-import {
+-  for_each = local.vm
+-  to       = module.vm[each.key].azurerm_linux_virtual_machine.this
+-  id       = "${local.nett.resource_group_id}/providers/Microsoft.Compute/virtualMachines/vm-${each.key}"
+-}
+-
+-# --- fra app: web app (bare når runtime = webapp) ----------------------
+-
+-import {
+-  for_each = local.webapp
+-  to       = module.webapp[each.key].azurerm_service_plan.this
+-  id       = "${local.nett.resource_group_id}/providers/Microsoft.Web/serverFarms/asp-${each.key}"
+-}
+-
+-import {
+-  for_each = local.webapp
+-  to       = module.webapp[each.key].azurerm_linux_web_app.this
+-  id       = "${local.nett.resource_group_id}/providers/Microsoft.Web/sites/app-${var.kortnavn}-${each.key}-${var.miljo}"
+-}
+diff --git a/stacks/shared-network/import.tf b/stacks/shared-network/import.tf
+deleted file mode 100644
+index 16f0b2c..0000000
+--- a/stacks/shared-network/import.tf
++++ /dev/null
+@@ -1,19 +0,0 @@
+-# MIDLERTIDIG: flytter ressursgruppa og VNet-et hit fra network-stacken.
+-# network har removed med destroy = false for de samme ressursene.
+-# Slettes i opprydnings-PR-en (K8).
+-#
+-# ID-ene bygges, de skrives ikke av (K5): abonnementet kommer fra
+-# data-kilden, ikke fra koden.
+-
+-# tflint-ignore: terraform_unused_declarations # Brukes bare av import-blokkene under
+-data "azurerm_subscription" "current" {}
+-
+-import {
+-  to = azurerm_resource_group.this
+-  id = "${data.azurerm_subscription.current.id}/resourceGroups/${local.rg_navn}"
+-}
+-
+-import {
+-  to = module.vnet.azurerm_virtual_network.this
+-  id = "${data.azurerm_subscription.current.id}/resourceGroups/${local.rg_navn}/providers/Microsoft.Network/virtualNetworks/${local.vnet_navn}"
+-}
+-- 
+2.43.0
+

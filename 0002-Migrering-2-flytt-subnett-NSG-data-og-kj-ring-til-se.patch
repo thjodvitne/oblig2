@@ -1,0 +1,758 @@
+From 199c792ddd53bbe3aecc684ebd1b6894ba81518b Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 12 Nov 2026 13:56:09 +0100
+Subject: [PATCH 2/3] =?UTF-8?q?Migrering=202:=20flytt=20subnett,=20NSG,=20?=
+ =?UTF-8?q?data=20og=20kj=C3=B8ring=20til=20service=20per=20tjeneste?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ config/dev/service-meny.tfvars       |  3 +
+ config/dev/service-ordre.tfvars      |  6 ++
+ config/prod/service-meny.tfvars      |  3 +
+ config/prod/service-ordre.tfvars     |  6 ++
+ stacks/app/main.tf                   | 54 ++++------------
+ stacks/app/outputs.tf                |  9 ---
+ stacks/data/main.tf                  | 52 +++------------
+ stacks/data/outputs.tf               |  9 ---
+ stacks/data/variables.tf             | 44 -------------
+ stacks/network/main.tf               | 33 ++--------
+ stacks/network/outputs.tf            | 19 ------
+ stacks/network/variables.tf          | 38 -----------
+ stacks/service/.terraform.lock.hcl   | 25 ++++++++
+ stacks/service/import.tf             | 75 ++++++++++++++++++++++
+ stacks/service/main.tf               | 95 ++++++++++++++++++++++++++++
+ stacks/service/outputs.tf            | 24 +++++++
+ stacks/{app => service}/variables.tf | 43 ++++++++++---
+ stacks/service/versions.tf           | 19 ++++++
+ 18 files changed, 319 insertions(+), 238 deletions(-)
+ create mode 100644 config/dev/service-meny.tfvars
+ create mode 100644 config/dev/service-ordre.tfvars
+ create mode 100644 config/prod/service-meny.tfvars
+ create mode 100644 config/prod/service-ordre.tfvars
+ delete mode 100644 stacks/app/outputs.tf
+ delete mode 100644 stacks/data/outputs.tf
+ delete mode 100644 stacks/data/variables.tf
+ delete mode 100644 stacks/network/outputs.tf
+ delete mode 100644 stacks/network/variables.tf
+ create mode 100644 stacks/service/.terraform.lock.hcl
+ create mode 100644 stacks/service/import.tf
+ create mode 100644 stacks/service/main.tf
+ create mode 100644 stacks/service/outputs.tf
+ rename stacks/{app => service}/variables.tf (51%)
+ create mode 100644 stacks/service/versions.tf
+
+diff --git a/config/dev/service-meny.tfvars b/config/dev/service-meny.tfvars
+new file mode 100644
+index 0000000..4311f28
+--- /dev/null
++++ b/config/dev/service-meny.tfvars
+@@ -0,0 +1,3 @@
++tjeneste = "meny"
++runtime  = "webapp"
++prefix   = "10.10.1.0/24"
+diff --git a/config/dev/service-ordre.tfvars b/config/dev/service-ordre.tfvars
+new file mode 100644
+index 0000000..7fa568b
+--- /dev/null
++++ b/config/dev/service-ordre.tfvars
+@@ -0,0 +1,6 @@
++tjeneste = "ordre"
++runtime  = "vm"
++prefix   = "10.10.0.0/24"
++
++# Offentlig nøkkel uten privat nøkkel. Ikke hemmelig.
++ssh_public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGMQ32gu8mGVI86gkUex5JsBeg7WC58bsUOVuxmeHDJW oblig2-ingen-privat-nokkel"
+diff --git a/config/prod/service-meny.tfvars b/config/prod/service-meny.tfvars
+new file mode 100644
+index 0000000..b502abd
+--- /dev/null
++++ b/config/prod/service-meny.tfvars
+@@ -0,0 +1,3 @@
++tjeneste = "meny"
++runtime  = "webapp"
++prefix   = "10.20.1.0/24"
+diff --git a/config/prod/service-ordre.tfvars b/config/prod/service-ordre.tfvars
+new file mode 100644
+index 0000000..0e7640b
+--- /dev/null
++++ b/config/prod/service-ordre.tfvars
+@@ -0,0 +1,6 @@
++tjeneste = "ordre"
++runtime  = "vm"
++prefix   = "10.20.0.0/24"
++
++# Offentlig nøkkel uten privat nøkkel. Ikke hemmelig.
++ssh_public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGMQ32gu8mGVI86gkUex5JsBeg7WC58bsUOVuxmeHDJW oblig2-ingen-privat-nokkel"
+diff --git a/stacks/app/main.tf b/stacks/app/main.tf
+index b417530..2e232b0 100644
+--- a/stacks/app/main.tf
++++ b/stacks/app/main.tf
+@@ -1,50 +1,18 @@
+-# Applaget for ALLE tjenestene: en VM eller en web app per tjeneste, koblet til
+-# subnettet som network-stacken har laget for den.
++# Tømt under migreringen. VM-en og web app-en eies nå av hver sin instans
++# av service. Stacken slettes i opprydnings-PR-en.
+ 
+-data "terraform_remote_state" "network" {
+-  backend = "azurerm"
+-  config = {
+-    resource_group_name  = var.state_resource_group_name
+-    storage_account_name = var.state_storage_account_name
+-    container_name       = var.state_container_name
+-    key                  = "oblig2/${var.miljo}/network.tfstate"
+-    use_azuread_auth     = true
+-  }
+-}
++removed {
++  from = module.vm
+ 
+-locals {
+-  network = data.terraform_remote_state.network.outputs
+-
+-  tags = {
+-    eier  = var.kortnavn
+-    miljo = var.miljo
+-    kurs  = "dcst3005-oblig2"
++  lifecycle {
++    destroy = false
+   }
+ }
+ 
+-module "vm" {
+-  source   = "../../modules/vm"
+-  for_each = { for navn, runtime in var.tjenester : navn => runtime if runtime == "vm" }
++removed {
++  from = module.webapp
+ 
+-  service             = each.key
+-  resource_group_name = local.network.resource_group_name
+-  location            = var.location
+-  subnet_id           = local.network.subnet_ids[each.key]
+-  size                = var.vm_size
+-  ssh_public_key      = var.ssh_public_key
+-  tags                = local.tags
+-}
+-
+-module "webapp" {
+-  source   = "../../modules/webapp"
+-  for_each = { for navn, runtime in var.tjenester : navn => runtime if runtime == "webapp" }
+-
+-  service             = each.key
+-  kortnavn            = var.kortnavn
+-  miljo               = var.miljo
+-  resource_group_name = local.network.resource_group_name
+-  location            = var.location
+-  subnet_id           = local.network.subnet_ids[each.key]
+-  sku                 = var.webapp_sku
+-  tags                = local.tags
++  lifecycle {
++    destroy = false
++  }
+ }
+diff --git a/stacks/app/outputs.tf b/stacks/app/outputs.tf
+deleted file mode 100644
+index 139e03e..0000000
+--- a/stacks/app/outputs.tf
++++ /dev/null
+@@ -1,9 +0,0 @@
+-output "vm_public_ips" {
+-  description = "Offentlig IP per VM-tjeneste. Åpne http://<ip> for å se boot-id-en."
+-  value       = { for navn, v in module.vm : navn => v.public_ip }
+-}
+-
+-output "webapp_hostnames" {
+-  description = "Adresse per web app-tjeneste."
+-  value       = { for navn, w in module.webapp : navn => w.hostname }
+-}
+diff --git a/stacks/data/main.tf b/stacks/data/main.tf
+index 47f02e2..4da9545 100644
+--- a/stacks/data/main.tf
++++ b/stacks/data/main.tf
+@@ -1,50 +1,18 @@
+-# Datalaget for ALLE tjenestene: én storage account og ett Key Vault per
+-# tjeneste. Ressursgruppa eies av network-stacken.
++# Tømt under migreringen. Storage account og Key Vault eies nå av hver
++# sin instans av service. Stacken slettes i opprydnings-PR-en.
+ 
+-data "azurerm_client_config" "current" {}
++removed {
++  from = module.storage
+ 
+-data "terraform_remote_state" "network" {
+-  backend = "azurerm"
+-  config = {
+-    resource_group_name  = var.state_resource_group_name
+-    storage_account_name = var.state_storage_account_name
+-    container_name       = var.state_container_name
+-    key                  = "oblig2/${var.miljo}/network.tfstate"
+-    use_azuread_auth     = true
++  lifecycle {
++    destroy = false
+   }
+ }
+ 
+-locals {
+-  network = data.terraform_remote_state.network.outputs
++removed {
++  from = module.keyvault
+ 
+-  tags = {
+-    eier  = var.kortnavn
+-    miljo = var.miljo
+-    kurs  = "dcst3005-oblig2"
++  lifecycle {
++    destroy = false
+   }
+ }
+-
+-module "storage" {
+-  source   = "../../modules/storage"
+-  for_each = var.tjenester
+-
+-  service             = each.key
+-  kortnavn            = var.kortnavn
+-  miljo               = var.miljo
+-  resource_group_name = local.network.resource_group_name
+-  location            = var.location
+-  tags                = local.tags
+-}
+-
+-module "keyvault" {
+-  source   = "../../modules/keyvault"
+-  for_each = var.tjenester
+-
+-  service             = each.key
+-  kortnavn            = var.kortnavn
+-  miljo               = var.miljo
+-  resource_group_name = local.network.resource_group_name
+-  location            = var.location
+-  tenant_id           = data.azurerm_client_config.current.tenant_id
+-  tags                = local.tags
+-}
+diff --git a/stacks/data/outputs.tf b/stacks/data/outputs.tf
+deleted file mode 100644
+index 9c50297..0000000
+--- a/stacks/data/outputs.tf
++++ /dev/null
+@@ -1,9 +0,0 @@
+-output "storage_account_names" {
+-  description = "Storage account per tjeneste."
+-  value       = { for navn, s in module.storage : navn => s.name }
+-}
+-
+-output "key_vault_names" {
+-  description = "Key Vault per tjeneste."
+-  value       = { for navn, k in module.keyvault : navn => k.name }
+-}
+diff --git a/stacks/data/variables.tf b/stacks/data/variables.tf
+deleted file mode 100644
+index 7ad34ee..0000000
+--- a/stacks/data/variables.tf
++++ /dev/null
+@@ -1,44 +0,0 @@
+-variable "kortnavn" {
+-  description = "Kortnavnet ditt. Settes i config/felles.tfvars."
+-  type        = string
+-
+-  validation {
+-    condition     = can(regex("^[a-z0-9]{2,10}$", var.kortnavn))
+-    error_message = "kortnavn må være 2–10 små bokstaver eller tall. Sett det i config/felles.tfvars."
+-  }
+-}
+-
+-variable "location" {
+-  description = "Azure-regionen. Settes i config/felles.tfvars."
+-  type        = string
+-}
+-
+-variable "miljo" {
+-  description = "Miljøet. Settes av scripts/kjor.sh (TF_VAR_miljo), ikke i en .tfvars-fil."
+-  type        = string
+-
+-  validation {
+-    condition     = contains(["dev", "prod"], var.miljo)
+-    error_message = "miljo må være dev eller prod."
+-  }
+-}
+-
+-variable "state_resource_group_name" {
+-  description = "Ressursgruppa til state-kontoen. Settes av scripts/kjor.sh fra shared/backend.hcl."
+-  type        = string
+-}
+-
+-variable "state_storage_account_name" {
+-  description = "State-kontoen. Settes av scripts/kjor.sh fra shared/backend.hcl."
+-  type        = string
+-}
+-
+-variable "state_container_name" {
+-  description = "Containeren state ligger i. Settes av scripts/kjor.sh fra shared/backend.hcl."
+-  type        = string
+-}
+-
+-variable "tjenester" {
+-  description = "Tjenestene som skal ha en storage account og et Key Vault."
+-  type        = set(string)
+-}
+diff --git a/stacks/network/main.tf b/stacks/network/main.tf
+index e7d7d3e..c3ae21c 100644
+--- a/stacks/network/main.tf
++++ b/stacks/network/main.tf
+@@ -1,19 +1,6 @@
+-# Nettverkslaget for ALLE tjenestene. Under migrering: ressursgruppa og VNet-et
+-# er flyttet til stacks/shared-network. Bare subnettene står igjen her.
++# Tømt under migreringen. Alt som sto her, eies nå av shared-network eller
++# service. Stacken slettes i opprydnings-PR-en.
+ 
+-locals {
+-  # Navnene, ikke ressursene: de eies nå av shared-network.
+-  rg_navn   = "rg-${var.kortnavn}-oblig2-${var.miljo}"
+-  vnet_navn = "vnet-${var.kortnavn}-${var.miljo}"
+-
+-  tags = {
+-    eier  = var.kortnavn
+-    miljo = var.miljo
+-    kurs  = "dcst3005-oblig2"
+-  }
+-}
+-
+-# Flyttet til shared-network. Glem dem her, uten å slette dem i Azure.
+ removed {
+   from = azurerm_resource_group.this
+ 
+@@ -30,16 +17,10 @@ removed {
+   }
+ }
+ 
+-module "subnet" {
+-  source   = "../../modules/subnet"
+-  for_each = var.tjenester
++removed {
++  from = module.subnet
+ 
+-  service             = each.key
+-  resource_group_name = local.rg_navn
+-  location            = var.location
+-  vnet_name           = local.vnet_navn
+-  prefix              = each.value.prefix
+-  delegate_web        = each.value.runtime == "webapp"
+-  allow_http_from     = var.allow_http_from
+-  tags                = local.tags
++  lifecycle {
++    destroy = false
++  }
+ }
+diff --git a/stacks/network/outputs.tf b/stacks/network/outputs.tf
+deleted file mode 100644
+index 290a77f..0000000
+--- a/stacks/network/outputs.tf
++++ /dev/null
+@@ -1,19 +0,0 @@
+-output "resource_group_name" {
+-  description = "Ressursgruppa alle stackene bruker."
+-  value       = local.rg_navn
+-}
+-
+-output "location" {
+-  description = "Regionen alt står i."
+-  value       = var.location
+-}
+-
+-output "vnet_name" {
+-  description = "Navnet på VNet-et."
+-  value       = local.vnet_navn
+-}
+-
+-output "subnet_ids" {
+-  description = "Subnett-ID per tjeneste."
+-  value       = { for navn, s in module.subnet : navn => s.subnet_id }
+-}
+diff --git a/stacks/network/variables.tf b/stacks/network/variables.tf
+deleted file mode 100644
+index 009ae53..0000000
+--- a/stacks/network/variables.tf
++++ /dev/null
+@@ -1,38 +0,0 @@
+-variable "kortnavn" {
+-  description = "Kortnavnet ditt. Settes i config/felles.tfvars."
+-  type        = string
+-
+-  validation {
+-    condition     = can(regex("^[a-z0-9]{2,10}$", var.kortnavn))
+-    error_message = "kortnavn må være 2–10 små bokstaver eller tall. Sett det i config/felles.tfvars."
+-  }
+-}
+-
+-variable "location" {
+-  description = "Azure-regionen. Settes i config/felles.tfvars."
+-  type        = string
+-}
+-
+-variable "miljo" {
+-  description = "Miljøet. Settes av scripts/kjor.sh (TF_VAR_miljo), ikke i en .tfvars-fil."
+-  type        = string
+-
+-  validation {
+-    condition     = contains(["dev", "prod"], var.miljo)
+-    error_message = "miljo må være dev eller prod."
+-  }
+-}
+-
+-variable "tjenester" {
+-  description = "Tjenestene som skal ha et subnett: adresseområde og kjøremiljø. runtime = \"webapp\" gir et subnett delegert til App Service."
+-  type = map(object({
+-    prefix  = string
+-    runtime = string
+-  }))
+-}
+-
+-variable "allow_http_from" {
+-  description = "Hvem som får nå tjenestene på port 80."
+-  type        = string
+-  default     = "Internet"
+-}
+diff --git a/stacks/service/.terraform.lock.hcl b/stacks/service/.terraform.lock.hcl
+new file mode 100644
+index 0000000..fb150fe
+--- /dev/null
++++ b/stacks/service/.terraform.lock.hcl
+@@ -0,0 +1,25 @@
++# This file is maintained automatically by "terraform init".
++# Manual edits may be lost in future updates.
++
++provider "registry.terraform.io/hashicorp/azurerm" {
++  version     = "5.11.0"
++  constraints = "~> 5.4"
++  hashes = [
++    "h1:6OVoAYFOZ5OPkpJT5lS4Pt14o5a0LRjJgDPGBt/1VfE=",
++    "h1:BNenr7M3gkRwRNw4fJ9cSGgjrbC4K4Mi3TTRDOvG5no=",
++    "h1:QldFxdezZrp3E1bKnWS7xcU63Zmol1K7siWsXS2S3pg=",
++    "h1:pZJ3HOERxQUnw4kbPZ0KHRihAIrxiE2+duDOnxFrJgg=",
++    "zh:2345a6104bb485141afb8f0047a48a5f27c3bb4e6eeb360c7955f381227d88dd",
++    "zh:34e86c5ceeba746fed119775cd37d7314ea8b7c2196ed8b8da8d8d71e10b96df",
++    "zh:358f30581df0670719fc8511066ef9d05eb2612934c147bfe1b1b1d67712d2f0",
++    "zh:3edb6681e17535f16ad1f2b7588325d86d7af57df9eed82fa4a607fc03e8afc7",
++    "zh:6a5b9d6dd86a759f8bfd81e15e7e688531c85ee9660bd5923f99e993a1f15c62",
++    "zh:78d5eefdd9e494defcb3c68d282b8f96630502cac21d1ea161f53cfe9bb483b3",
++    "zh:a470dc95f15dcded2e06dd45c44c3b50a22a45b87c9ba7bd19dc6b25022660b7",
++    "zh:b179f04830c1d8d7ec15ae4be4434042d87679bb23b7d60d7ebd751420bf646c",
++    "zh:b183835acbcf39047d195f933caebd1902065d2437df17e964ceb4a358441f41",
++    "zh:b3d3555ac1f16a59baaab894fe9e839baedc809aef05a6d8e6c0cdaba9c92749",
++    "zh:cc29f59113d468757e9f1a3db774c73d8827f8359816216b7b82ddef5ff02d66",
++    "zh:e37d3649320c50110675156174f476b3b12ca5c1f267f1cadb56ad26e7f3553e",
++  ]
++}
+diff --git a/stacks/service/import.tf b/stacks/service/import.tf
+new file mode 100644
+index 0000000..f3ff99e
+--- /dev/null
++++ b/stacks/service/import.tf
+@@ -0,0 +1,75 @@
++# MIDLERTIDIG: flytter tjenestens ressurser hit fra network, data og app.
++# De gamle stackene har removed med destroy = false for de samme ressursene.
++# Slettes i opprydnings-PR-en (K8).
++#
++# ID-ene bygges av ID-ene shared-network gir ut, så ingen abonnements-ID
++# står i koden (K5).
++
++# --- fra network ---------------------------------------------------------
++
++import {
++  to = module.subnet.azurerm_subnet.this
++  id = "${local.nett.vnet_id}/subnets/snet-${var.tjeneste}"
++}
++
++import {
++  to = module.subnet.azurerm_network_security_group.this
++  id = "${local.nett.resource_group_id}/providers/Microsoft.Network/networkSecurityGroups/nsg-${var.tjeneste}"
++}
++
++import {
++  to = module.subnet.azurerm_network_security_rule.http
++  id = "${local.nett.resource_group_id}/providers/Microsoft.Network/networkSecurityGroups/nsg-${var.tjeneste}/securityRules/allow-http"
++}
++
++# Lett å glemme: koblingen er en egen ressurs. Import-ID-en er subnettets ID.
++import {
++  to = module.subnet.azurerm_subnet_network_security_group_association.this
++  id = "${local.nett.vnet_id}/subnets/snet-${var.tjeneste}"
++}
++
++# --- fra data ------------------------------------------------------------
++
++import {
++  to = module.storage.azurerm_storage_account.this
++  id = "${local.nett.resource_group_id}/providers/Microsoft.Storage/storageAccounts/st${var.kortnavn}${var.tjeneste}${var.miljo}"
++}
++
++import {
++  to = module.keyvault.azurerm_key_vault.this
++  id = "${local.nett.resource_group_id}/providers/Microsoft.KeyVault/vaults/kv-${var.kortnavn}-${var.tjeneste}-${var.miljo}"
++}
++
++# --- fra app: VM (bare når runtime = vm) --------------------------------
++
++import {
++  for_each = local.vm
++  to       = module.vm[each.key].azurerm_public_ip.this
++  id       = "${local.nett.resource_group_id}/providers/Microsoft.Network/publicIPAddresses/pip-${each.key}"
++}
++
++import {
++  for_each = local.vm
++  to       = module.vm[each.key].azurerm_network_interface.this
++  id       = "${local.nett.resource_group_id}/providers/Microsoft.Network/networkInterfaces/nic-${each.key}"
++}
++
++import {
++  for_each = local.vm
++  to       = module.vm[each.key].azurerm_linux_virtual_machine.this
++  id       = "${local.nett.resource_group_id}/providers/Microsoft.Compute/virtualMachines/vm-${each.key}"
++}
++
++# --- fra app: web app (bare når runtime = webapp) ----------------------
++
++import {
++  for_each = local.webapp
++  to       = module.webapp[each.key].azurerm_service_plan.this
++  id       = "${local.nett.resource_group_id}/providers/Microsoft.Web/serverFarms/asp-${each.key}"
++}
++
++import {
++  for_each = local.webapp
++  to       = module.webapp[each.key].azurerm_linux_web_app.this
++  id       = "${local.nett.resource_group_id}/providers/Microsoft.Web/sites/app-${var.kortnavn}-${each.key}-${var.miljo}"
++}
+diff --git a/stacks/service/main.tf b/stacks/service/main.tf
+new file mode 100644
+index 0000000..22bb320
+--- /dev/null
++++ b/stacks/service/main.tf
+@@ -0,0 +1,95 @@
++# ÉN tjeneste, vertikalt: subnett med NSG, storage account, Key Vault og
++# kjøremiljøet (VM eller web app). Tjenesten er en parameter, ikke en mappe:
++# hver config/<miljø>/service-<navn>.tfvars er én instans med egen state.
++# Ressursgruppa og VNet-et eies av shared-network.
++
++data "azurerm_client_config" "current" {}
++
++data "terraform_remote_state" "shared_network" {
++  backend = "azurerm"
++  config = {
++    resource_group_name  = var.state_resource_group_name
++    storage_account_name = var.state_storage_account_name
++    container_name       = var.state_container_name
++    key                  = "oblig2/${var.miljo}/shared-network.tfstate"
++    use_azuread_auth     = true
++  }
++}
++
++locals {
++  nett = data.terraform_remote_state.shared_network.outputs
++
++  # Variasjonen mellom tjenestene: det ene kjøremiljøet får én instans,
++  # det andre ingen.
++  vm     = var.runtime == "vm" ? toset([var.tjeneste]) : toset([])
++  webapp = var.runtime == "webapp" ? toset([var.tjeneste]) : toset([])
++
++  tags = {
++    eier  = var.kortnavn
++    miljo = var.miljo
++    kurs  = "dcst3005-oblig2"
++  }
++}
++
++module "subnet" {
++  source = "../../modules/subnet"
++
++  service             = var.tjeneste
++  resource_group_name = local.nett.resource_group_name
++  location            = var.location
++  vnet_name           = local.nett.vnet_name
++  prefix              = var.prefix
++  delegate_web        = var.runtime == "webapp"
++  allow_http_from     = var.allow_http_from
++  tags                = local.tags
++}
++
++module "storage" {
++  source = "../../modules/storage"
++
++  service             = var.tjeneste
++  kortnavn            = var.kortnavn
++  miljo               = var.miljo
++  resource_group_name = local.nett.resource_group_name
++  location            = var.location
++  tags                = local.tags
++}
++
++module "keyvault" {
++  source = "../../modules/keyvault"
++
++  service             = var.tjeneste
++  kortnavn            = var.kortnavn
++  miljo               = var.miljo
++  resource_group_name = local.nett.resource_group_name
++  location            = var.location
++  tenant_id           = data.azurerm_client_config.current.tenant_id
++  tags                = local.tags
++}
++
++module "vm" {
++  source   = "../../modules/vm"
++  for_each = local.vm
++
++  service             = each.key
++  resource_group_name = local.nett.resource_group_name
++  location            = var.location
++  subnet_id           = module.subnet.subnet_id
++  size                = var.vm_size
++  ssh_public_key      = var.ssh_public_key
++  tags                = local.tags
++}
++
++module "webapp" {
++  source   = "../../modules/webapp"
++  for_each = local.webapp
++
++  service             = each.key
++  kortnavn            = var.kortnavn
++  miljo               = var.miljo
++  resource_group_name = local.nett.resource_group_name
++  location            = var.location
++  subnet_id           = module.subnet.subnet_id
++  sku                 = var.webapp_sku
++  tags                = local.tags
++}
+diff --git a/stacks/service/outputs.tf b/stacks/service/outputs.tf
+new file mode 100644
+index 0000000..0a3cee3
+--- /dev/null
++++ b/stacks/service/outputs.tf
+@@ -0,0 +1,24 @@
++output "vm_public_ips" {
++  description = "Offentlig IP hvis tjenesten kjører på en VM. Åpne http://<ip> for å se boot-id-en."
++  value       = { for navn, v in module.vm : navn => v.public_ip }
++}
++
++output "webapp_hostnames" {
++  description = "Adressen hvis tjenesten kjører på en web app."
++  value       = { for navn, w in module.webapp : navn => w.hostname }
++}
++
++output "subnet_id" {
++  description = "Subnettet til tjenesten."
++  value       = module.subnet.subnet_id
++}
++
++output "storage_account_name" {
++  description = "Storage account-en til tjenesten."
++  value       = module.storage.name
++}
++
++output "key_vault_name" {
++  description = "Key Vault-et til tjenesten."
++  value       = module.keyvault.name
++}
+diff --git a/stacks/app/variables.tf b/stacks/service/variables.tf
+similarity index 51%
+rename from stacks/app/variables.tf
+rename to stacks/service/variables.tf
+index 809d19a..1350ba9 100644
+--- a/stacks/app/variables.tf
++++ b/stacks/service/variables.tf
+@@ -38,29 +38,56 @@ variable "state_container_name" {
+   type        = string
+ }
+ 
+-variable "tjenester" {
+-  description = "Tjenestene og kjøremiljøet deres: \"vm\" eller \"webapp\"."
+-  type        = map(string)
++variable "tjeneste" {
++  description = "Navnet på tjenesten denne instansen av stacken er. Går inn i alle ressursnavnene."
++  type        = string
++
++  validation {
++    condition     = can(regex("^[a-z0-9]{2,10}$", var.tjeneste))
++    error_message = "tjeneste må være 2–10 små bokstaver eller tall."
++  }
++}
++
++variable "runtime" {
++  description = "Kjøremiljøet: \"vm\" gir en Linux-VM med offentlig IP, \"webapp\" en App Service-plan og en web app med VNet-integrasjon."
++  type        = string
+ 
+   validation {
+-    condition     = alltrue([for r in values(var.tjenester) : contains(["vm", "webapp"], r)])
+-    error_message = "Kjøremiljøet må være vm eller webapp."
++    condition     = contains(["vm", "webapp"], var.runtime)
++    error_message = "runtime må være vm eller webapp."
+   }
+ }
+ 
++variable "prefix" {
++  description = "Adresseområdet til tjenestens subnett. Må ligge innenfor VNet-ets adresserom."
++  type        = string
++}
++
++variable "allow_http_from" {
++  description = "Hvem som får nå tjenesten på port 80."
++  type        = string
++  default     = "Internet"
++}
++
+ variable "vm_size" {
+-  description = "VM-størrelsen for tjenester med runtime vm."
++  description = "VM-størrelsen når runtime er vm."
+   type        = string
+   default     = "Standard_B2als_v2"
+ }
+ 
+ variable "ssh_public_key" {
+-  description = "Offentlig SSH-nøkkel til VM-ene. Ikke hemmelig."
++  description = "Offentlig SSH-nøkkel til VM-en. Ikke hemmelig. Trengs bare når runtime er vm."
+   type        = string
++  default     = null
++
++  validation {
++    condition     = var.runtime != "vm" || var.ssh_public_key != null
++    error_message = "ssh_public_key må settes når runtime er vm."
++  }
+ }
+ 
+ variable "webapp_sku" {
+-  description = "SKU for App Service-planene til tjenester med runtime webapp."
++  description = "SKU for App Service-planen når runtime er webapp."
+   type        = string
+   default     = "B1"
+ }
+diff --git a/stacks/service/versions.tf b/stacks/service/versions.tf
+new file mode 100644
+index 0000000..6887fb8
+--- /dev/null
++++ b/stacks/service/versions.tf
+@@ -0,0 +1,19 @@
++terraform {
++  required_version = ">= 1.16.0"
++
++  # Tom med vilje. Adressen kommer fra shared/backend.hcl, og key fra
++  # scripts/kjor.sh: oblig2/<miljø>/<navn på config-fila>.tfstate
++  backend "azurerm" {}
++
++  required_providers {
++    azurerm = {
++      source  = "hashicorp/azurerm"
++      version = "~> 5.4"
++    }
++  }
++}
++
++# Abonnementet kommer fra ARM_SUBSCRIPTION_ID, ikke fra koden.
++provider "azurerm" {
++  features {}
++}
+-- 
+2.43.0
+

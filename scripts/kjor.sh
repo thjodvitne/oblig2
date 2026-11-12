@@ -39,7 +39,7 @@
 
 set -uo pipefail
 
-LAG="network shared-network data app service"
+LAG="shared-network service"
 
 MILJO="${1:-}"
 HANDLING="${2:-}"

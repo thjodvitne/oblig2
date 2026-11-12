@@ -23,11 +23,6 @@ variable "miljo" {
   }
 }
 
-variable "address_space" {
-  description = "Adresserommet til VNet-et."
-  type        = list(string)
-}
-
 variable "tjenester" {
   description = "Tjenestene som skal ha et subnett: adresseområde og kjøremiljø. runtime = \"webapp\" gir et subnett delegert til App Service."
   type = map(object({

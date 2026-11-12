@@ -93,3 +93,21 @@ module "webapp" {
   sku                 = var.webapp_sku
   tags                = local.tags
 }
+
+# Regler bare denne tjenesten skal ha. Settes per tjeneste i config, så de
+# andre instansene av stacken får ingen.
+resource "azurerm_network_security_rule" "ekstra" {
+  for_each = var.ekstra_innkommende
+
+  name                        = each.key
+  resource_group_name         = local.nett.resource_group_name
+  network_security_group_name = module.subnet.nsg_name
+  priority                    = each.value.prioritet
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_range      = tostring(each.value.port)
+  source_address_prefix       = each.value.kilde
+  destination_address_prefix  = "*"
+}
